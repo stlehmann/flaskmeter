@@ -1,0 +1,7 @@
+flask
+flask-script
+flask-socketio
+plotly
+WTForms
+psutil
+eventlet
