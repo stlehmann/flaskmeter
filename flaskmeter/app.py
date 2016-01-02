@@ -7,6 +7,13 @@ licensed under the MIT license
 """
 import json
 import plotly
+from enum import Enum
+
+
+class Pages(Enum):
+    cpu = 1
+    processes = 2
+
 
 # Set this variable to "threading", "eventlet" or "gevent" to test the
 # different async modes, or leave it set to None for the application to choose
@@ -15,7 +22,8 @@ async_mode = None
 
 # refresh time in seconds
 REFRESH_TIME = 1
-
+# currently active page
+current_page = Pages.cpu
 
 if async_mode is None:
     try:
@@ -58,8 +66,7 @@ from . import meter
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode=async_mode)
-cpu_thread = None
-process_thread = None
+thread = None
 
 
 graphs = [
@@ -84,42 +91,42 @@ graphs = [
 ]
 
 
-def cpumem_thread():
+def background_thread():
+    global current_page
     while True:
         time.sleep(REFRESH_TIME)
-        socketio.emit(
-            'my response',
-            {
-                'time': str(datetime.datetime.now()),
-                'cpu': meter.cpu_pct(),
-                'mem': meter.mem_pct()
-            },
-            namespace='/test'
-        )
-
-
-def processes_thread():
-    while True:
-        time.sleep(REFRESH_TIME)
-        processes = sorted(
-            meter.list_processes(), key=lambda x: x['cpu'], reverse=True
-        )
-        socketio.emit(
-            'processlist',
-            dict(
-                processes=processes
-            ),
-            namespace='/test'
-        )
+        if current_page == Pages.cpu:
+            socketio.emit(
+                'my response',
+                {
+                    'time': str(datetime.datetime.now()),
+                    'cpu': meter.cpu_pct(),
+                    'mem': meter.mem_pct()
+                },
+                namespace='/test'
+            )
+        elif current_page == Pages.processes:
+            processes = sorted(
+                meter.list_processes(), key=lambda x: x['cpu'], reverse=True
+            )
+            socketio.emit(
+                'processlist',
+                dict(
+                    processes=processes
+                ),
+                namespace='/test'
+            )
 
 
 @app.route('/')
 def index():
-    global cpu_thread
-    if cpu_thread is None:
-        cpu_thread = Thread(target=cpumem_thread)
-        cpu_thread.daemon = True
-        cpu_thread.start()
+    global current_page
+    global thread
+    current_page = Pages.cpu
+    if thread is None:
+        thread = Thread(target=background_thread)
+        thread.daemon = True
+        thread.start()
 
     ids = ['graph-{}'.format(i) for i, _ in enumerate(graphs)]
     graph_json = json.dumps(graphs, cls=plotly.utils.PlotlyJSONEncoder)
@@ -130,11 +137,13 @@ def index():
 
 @app.route('/processes')
 def handle_processes():
-    global process_thread
-    if process_thread is None:
-        process_thread = Thread(target=processes_thread)
-        process_thread.daemon = True
-        process_thread.start()
+    global current_page
+    global thread
+    current_page = Pages.processes
+    if thread is None:
+        thread = Thread(target=background_thread)
+        thread.daemon = True
+        thread.start()
 
     processes = sorted(
         meter.list_processes(), key=lambda x: x['cpu'], reverse=True
