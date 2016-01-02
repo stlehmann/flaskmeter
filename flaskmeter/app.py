@@ -13,6 +13,9 @@ import plotly
 # the best option based on available packages.
 async_mode = None
 
+# refresh time in seconds
+REFRESH_TIME = 1
+
 
 if async_mode is None:
     try:
@@ -55,8 +58,8 @@ from . import meter
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode=async_mode)
-thread = None
-count = 0
+cpu_thread = None
+process_thread = None
 
 
 graphs = [
@@ -81,15 +84,12 @@ graphs = [
 ]
 
 
-def background_thread():
-    global count
+def cpumem_thread():
     while True:
-        count += 1
-        time.sleep(1)
+        time.sleep(REFRESH_TIME)
         socketio.emit(
             'my response',
             {
-                'count': count,
                 'time': str(datetime.datetime.now()),
                 'cpu': meter.cpu_pct(),
                 'mem': meter.mem_pct()
@@ -98,19 +98,49 @@ def background_thread():
         )
 
 
+def processes_thread():
+    while True:
+        time.sleep(REFRESH_TIME)
+        processes = sorted(
+            meter.list_processes(), key=lambda x: x['cpu'], reverse=True
+        )
+        socketio.emit(
+            'processlist',
+            dict(
+                processes=processes
+            ),
+            namespace='/test'
+        )
+
+
 @app.route('/')
 def index():
-    global thread
-    if thread is None:
-        thread = Thread(target=background_thread)
-        thread.daemon = True
-        thread.start()
+    global cpu_thread
+    if cpu_thread is None:
+        cpu_thread = Thread(target=cpumem_thread)
+        cpu_thread.daemon = True
+        cpu_thread.start()
 
     ids = ['graph-{}'.format(i) for i, _ in enumerate(graphs)]
     graph_json = json.dumps(graphs, cls=plotly.utils.PlotlyJSONEncoder)
     return render_template('index.html', ids=ids, graphJSON=graph_json)
 
     # return render_template('index.html')
+
+
+@app.route('/processes')
+def handle_processes():
+    global process_thread
+    if process_thread is None:
+        process_thread = Thread(target=processes_thread)
+        process_thread.daemon = True
+        process_thread.start()
+
+    processes = sorted(
+        meter.list_processes(), key=lambda x: x['cpu'], reverse=True
+    )
+
+    return render_template('processes.html', processes=processes)
 
 
 @socketio.on('clicked', namespace='/test')

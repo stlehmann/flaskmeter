@@ -7,6 +7,10 @@ licensed under the MIT license
 """
 
 import psutil
+from collections import namedtuple
+
+
+ProcessInfo = namedtuple('ProcessInfo', 'id name cpu mem')
 
 
 def cpu_pct():
@@ -15,3 +19,22 @@ def cpu_pct():
 
 def mem_pct():
     return psutil.virtual_memory().percent
+
+
+def list_processes():
+    processes = []
+    for process in psutil.process_iter():
+        try:
+            id = process.pid
+            name = process.name()
+        except psutil.ZombieProcess:
+            continue
+
+        try:
+            cpu = process.cpu_percent()
+            mem = process.memory_percent()
+        except (psutil.ZombieProcess, psutil.AccessDenied):
+            continue
+
+        processes.append(ProcessInfo(id, name, cpu, mem)._asdict())
+    return processes
