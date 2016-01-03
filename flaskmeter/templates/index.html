@@ -5,7 +5,8 @@
 {% block title %}Flaskmeter - CPU & Mem{% endblock %}
 
 {% block main %}
-    <script src="https://cdn.socket.io/socket.io-1.3.7.js"></script>
+    <script src="/static/socket.io-1.3.7.js"></script>
+    <script src="/static/plotly.min.js"></script>
     <script type="text/javascript" charset="utf-8">
         $(document).ready(function(){
           namespace = '/test'; // change to an empty string to use the global namespace
@@ -14,9 +15,20 @@
           // this is specially important when using the global namespace
           var socket = io.connect('http://' + document.domain + ':' + location.port + namespace);
 
+          // setup plotly
+          var graphs = {{graphJSON | safe}};
+          var ids = {{ids | safe}};
+
+          for(var i in graphs) {
+              Plotly.plot(ids[i], // the ID of the div, created above
+                          graphs[i].data,
+                          graphs[i].layout || {});
+
+          }
+
           // event handler for server sent data
           // the data is displayed in the  "Received" section of the page
-          socket.on('my response', function(msg) {
+          socket.on('cpu_mem', function(msg) {
               $('#cpu').val(msg.cpu.toFixed(1) + " %");
               $('#mem').val(msg.mem.toFixed(1) + " %");
               graphs[0].data[0].x.push(msg.time);
@@ -25,17 +37,6 @@
               graphs[0].data[1].y.push(msg.mem);
               Plotly.redraw(ids[0])
           });
-
-          socket.on('clicked_back', function(msg) {
-            var isChecked = msg.clicked;
-            $('#received').attr('checked', isChecked);
-          });
-
-          $("#mycheckbox").change(function() {// the first checking checkbox
-            var isChecked = $('#mycheckbox').attr('checked') != undefined;
-            socket.emit('clicked', {data: isChecked});
-          });
-
         });
     </script>
 
@@ -63,27 +64,5 @@
       {% endfor %}
     </div>
 
-    <!-- D3.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js"></script>
-    <!-- Plotly.js -->
-    <script src="https://d14fo0winaifog.cloudfront.net/plotly-basic.js"></script>
-
-    <script type="text/javascript">
-
-        var graphs = {{graphJSON | safe}};
-        var ids = {{ids | safe}};
-
-        for(var i in graphs) {
-            Plotly.plot(ids[i], // the ID of the div, created above
-                        graphs[i].data,
-                        graphs[i].layout || {});
-
-        }
-
-    </script>
-
 {% endblock %}
 
-<footer>
-
-</footer>

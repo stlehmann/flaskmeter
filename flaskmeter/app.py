@@ -22,6 +22,8 @@ async_mode = None
 
 # refresh time in seconds
 REFRESH_TIME = 1
+BUFFER_SIZE = 120
+
 # currently active page
 current_page = Pages.cpu
 
@@ -69,39 +71,54 @@ socketio = SocketIO(app, async_mode=async_mode)
 thread = None
 
 
+cpu_data = dict(x=[], y=[], type='scatter', name='cpu %')
+mem_data = dict(x=[], y=[], type='scatter', name='mem %')
+
+
 graphs = [
     dict(
-        data=[
-            dict(
-                x=[],
-                y=[],
-                type='scatter',
-                name='cpu %'
-            ),
-            dict(
-                x=[],
-                y=[],
-                type='scatter',
-                name='mem %'
-            )
-        ],
-        layout=dict(
-        )
+        data=[cpu_data, mem_data],
+        layout=dict()
     )
 ]
 
 
 def background_thread():
+
+    global cpu_data
+    global mem_data
     global current_page
+
     while True:
         time.sleep(REFRESH_TIME)
+        # get current data
+        cur_time = str(datetime.datetime.now())
+        cur_cpu = meter.cpu_pct()
+        cur_mem = meter.mem_pct()
+
+        # remove old data
+        if len(cpu_data['x']) >= BUFFER_SIZE:
+            cpu_data['x'].pop(0)
+            cpu_data['y'].pop(0)
+            mem_data['x'].pop(0)
+            mem_data['y'].pop(0)
+
+        # save cpu data
+        cpu_data['x'].append(cur_time)
+        cpu_data['y'].append(cur_cpu)
+
+        # save mem data
+        mem_data['x'].append(cur_time)
+        mem_data['y'].append(cur_mem)
+
         if current_page == Pages.cpu:
+
             socketio.emit(
-                'my response',
+                'cpu_mem',
                 {
-                    'time': str(datetime.datetime.now()),
-                    'cpu': meter.cpu_pct(),
-                    'mem': meter.mem_pct()
+                    'time': cur_time,
+                    'cpu': cur_cpu,
+                    'mem': cur_mem
                 },
                 namespace='/test'
             )
@@ -150,11 +167,6 @@ def handle_processes():
     )
 
     return render_template('processes.html', processes=processes)
-
-
-@socketio.on('clicked', namespace='/test')
-def handle_clicked(data):
-    socketio.emit('clicked_back', {'clicked': data['data']}, namespace='/test')
 
 
 if __name__ == '__main__':
